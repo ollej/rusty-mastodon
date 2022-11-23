@@ -1,13 +1,16 @@
 use std::{env, fmt};
 use {
     http::StatusCode,
-    nanoserde::{DeJson, SerJson},
+    nanoserde::{DeJson, DeJsonErr, SerJson},
+    reqwest::header,
     vercel_lambda::{error::VercelError, Body, Response},
 };
 
 #[derive(Debug, PartialEq)]
 pub enum RustyMastodonError {
     ExternalRequest,
+    Configuration,
+    Parsing,
 }
 
 impl fmt::Display for RustyMastodonError {
@@ -16,6 +19,12 @@ impl fmt::Display for RustyMastodonError {
             RustyMastodonError::ExternalRequest => {
                 write!(f, "Failed reading data from external source")
             }
+            RustyMastodonError::Parsing => {
+                write!(f, "Failed parsing data from external source")
+            }
+            RustyMastodonError::Configuration => {
+                write!(f, "Configuration error")
+            }
         }
     }
 }
@@ -23,6 +32,24 @@ impl fmt::Display for RustyMastodonError {
 impl From<reqwest::Error> for RustyMastodonError {
     fn from(_: reqwest::Error) -> Self {
         RustyMastodonError::ExternalRequest
+    }
+}
+
+impl From<DeJsonErr> for RustyMastodonError {
+    fn from(_: DeJsonErr) -> Self {
+        RustyMastodonError::Parsing
+    }
+}
+
+impl From<reqwest::header::InvalidHeaderValue> for RustyMastodonError {
+    fn from(_: reqwest::header::InvalidHeaderValue) -> Self {
+        RustyMastodonError::Configuration
+    }
+}
+
+impl From<env::VarError> for RustyMastodonError {
+    fn from(_: env::VarError) -> Self {
+        RustyMastodonError::Configuration
     }
 }
 
@@ -82,7 +109,7 @@ pub struct Root {
 pub struct Instance {
     pub id: String,
     pub name: String,
-    pub added_at: String,
+    pub added_at: Option<String>,
     pub updated_at: String,
     pub checked_at: String,
     pub uptime: i64,
@@ -122,6 +149,29 @@ pub struct Info {
 pub struct Pagination {
     pub total: i64,
     pub next_id: String,
+}
+
+pub fn get_instances() -> Result<Vec<Instance>, RustyMastodonError> {
+    let token = format!("Bearer {}", env::var("INSTANCES_API_TOKEN")?);
+    let mut bearer = header::HeaderValue::from_str(&token)?;
+    bearer.set_sensitive(true);
+    let mut headers = header::HeaderMap::new();
+    headers.insert(header::AUTHORIZATION, bearer);
+    let client = reqwest::blocking::Client::builder()
+        .default_headers(headers)
+        .user_agent(env::var("INSTANCES_API_USER_AGENT")?)
+        .build()
+        .map_err(|_| RustyMastodonError::ExternalRequest)?;
+
+    let resp = client
+        .get(env::var("INSTANCES_API_URL")?)
+        .send()
+        .map_err(|_| RustyMastodonError::ExternalRequest)?
+        .text()
+        .map_err(|_| RustyMastodonError::ExternalRequest)?;
+    println!("Response data: {}", resp);
+    let json: Root = DeJson::deserialize_json(&resp)?;
+    Ok(json.instances)
 }
 
 /// Build a Vercel Response from a serializeable body
