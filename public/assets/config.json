@@ -1,5 +1,5 @@
 {
-    "input_data_path": "http://localhost:3000/api/mastodon-instances",
+    "input_data_path": "http://rusty-mastodon.vercel.app/api/mastodon-instances",
     "display_time": 60,
     "backgrounds": [
         "background.png",
@@ -32,7 +32,7 @@
             "texture": "clownfish.png",
             "size": 7.0,
             "size_randomness": 0.5,
-            "movement": "AcceleratingEdgeIdling",
+            "movement": "Accelerating",
             "bubbles": 25,
             "collision_aversion": 0.25,
             "speed": {

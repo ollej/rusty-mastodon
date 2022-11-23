@@ -1,10 +1,19 @@
-use std::{env, fmt};
+use std::{
+    env, fmt, fs,
+    ops::{Add, Div, Mul, Sub},
+};
 use {
     http::StatusCode,
     nanoserde::{DeJson, DeJsonErr, SerJson},
-    reqwest::header,
     vercel_lambda::{error::VercelError, Body, Response},
 };
+
+fn map_range<T: Copy>(from_range: (T, T), to_range: (T, T), s: T) -> T
+where
+    T: Add<T, Output = T> + Sub<T, Output = T> + Mul<T, Output = T> + Div<T, Output = T>,
+{
+    to_range.0 + (s - from_range.0) * (to_range.1 - to_range.0) / (from_range.1 - from_range.0)
+}
 
 #[derive(Debug, PartialEq)]
 pub enum RustyMastodonError {
@@ -153,7 +162,6 @@ pub struct Info {
 #[derive(Default, Debug, Clone, PartialEq, DeJson)]
 pub struct Pagination {
     pub total: i64,
-    pub next_id: String,
 }
 
 pub fn get_instances() -> Result<Vec<Instance>, RustyMastodonError> {
@@ -161,33 +169,64 @@ pub fn get_instances() -> Result<Vec<Instance>, RustyMastodonError> {
         .user_agent(env::var("INSTANCES_API_USER_AGENT")?)
         .build()?
         .get(env::var("INSTANCES_API_URL")?)
+        .query(&[
+            ("count", "100"),
+            ("include_dead", "false"),
+            ("min_active_users", "1"),
+            ("min_users", "1"),
+            ("sort_by", "users"),
+            ("sort_order", "desc"),
+        ])
         .bearer_auth(env::var("INSTANCES_API_TOKEN")?)
         .send()?
         .text()?;
-    let json: Root = DeJson::deserialize_json(&content)?;
+    fs::write("/tmp/mastodon-instances.json", &content).expect("Unable to write file");
+    let json: Root = DeJson::deserialize_json(&content).unwrap();
+    //eprintln!(
+    //    "Loaded {} out of {} instances...",
+    //    json.instances.len(),
+    //    json.pagination.total
+    //);
     Ok(json.instances)
 }
 
 pub fn build_school(instances: Vec<Instance>) -> Vec<FishData> {
     instances
         .iter()
+        .take(100)
         .map(|instance| {
+            let users = instance.users.parse().unwrap_or(0.);
+            let statuses = instance.statuses.parse().unwrap_or(0.);
             let bubbles = if instance.open_registrations {
                 1.0
             } else {
                 0.0
             };
-            let fish = match instance {
-                Instance { ref users, .. } if users == "1" => "neontetra",
-                Instance { dead: true, .. } => "turtle",
-                _ => "clownfish",
-            }
-            .to_string();
-            FishData {
-                fish,
-                size: 1.0,
-                speed: 1.0,
-                bubbles,
+            match instance {
+                Instance { ref users, .. } if users == "1" => FishData {
+                    fish: "neontetra".to_string(),
+                    size: 1.0,
+                    speed: 1.0,
+                    bubbles,
+                },
+                Instance { up: false, .. } => FishData {
+                    fish: "seahorse".to_string(),
+                    size: map_range((0., 1_000_000.), (0.2, 1.0), users),
+                    speed: map_range((0., 100_000_000.), (0.2, 1.0), statuses),
+                    bubbles,
+                },
+                Instance { dead: true, .. } => FishData {
+                    fish: "turtle".to_string(),
+                    size: map_range((0., 1_000_000.), (0.2, 1.0), users),
+                    speed: map_range((0., 100_000_000.), (0.2, 1.0), statuses),
+                    bubbles,
+                },
+                _ => FishData {
+                    fish: "clownfish".to_string(),
+                    size: map_range((0., 1_000_000.), (0.2, 1.0), users),
+                    speed: map_range((0., 100_000_000.), (0.2, 1.0), statuses),
+                    bubbles,
+                },
             }
         })
         .collect()
