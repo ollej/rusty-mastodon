@@ -180,7 +180,7 @@ pub fn get_instances() -> Result<Vec<Instance>, RustyMastodonError> {
         .bearer_auth(env::var("INSTANCES_API_TOKEN")?)
         .send()?
         .text()?;
-    fs::write("/tmp/mastodon-instances.json", &content).expect("Unable to write file");
+    //fs::write("/tmp/mastodon-instances.json", &content).expect("Unable to write file");
     let json: Root = DeJson::deserialize_json(&content).unwrap();
     //eprintln!(
     //    "Loaded {} out of {} instances...",
