@@ -61,7 +61,12 @@ impl From<RustyMastodonError> for VercelError {
     }
 }
 
-#[derive(Clone, Default, SerJson)]
+#[derive(Clone, Debug, Default, SerJson)]
+struct ErrorResponse {
+    message: String,
+}
+
+#[derive(Clone, Debug, Default, SerJson)]
 pub struct InputData {
     pub legend: Option<Legend>,
     pub school: Vec<FishData>,
@@ -79,7 +84,7 @@ pub struct FishLegend {
     pub description: String,
 }
 
-#[derive(Clone, SerJson)]
+#[derive(Clone, Debug, SerJson)]
 #[nserde(default)]
 pub struct FishData {
     pub fish: String,
@@ -174,6 +179,31 @@ pub fn get_instances() -> Result<Vec<Instance>, RustyMastodonError> {
     Ok(json.instances)
 }
 
+pub fn build_school(instances: Vec<Instance>) -> Vec<FishData> {
+    instances
+        .iter()
+        .map(|instance| {
+            let bubbles = if instance.open_registrations {
+                1.0
+            } else {
+                0.0
+            };
+            let fish = match instance {
+                Instance { ref users, .. } if users == "1" => "neontetra",
+                Instance { dead: true, .. } => "turtle",
+                _ => "clownfish",
+            }
+            .to_string();
+            FishData {
+                fish,
+                size: 1.0,
+                speed: 1.0,
+                bubbles,
+            }
+        })
+        .collect()
+}
+
 /// Build a Vercel Response from a serializeable body
 ///
 /// # Arguments
@@ -202,6 +232,21 @@ where
                 env::var("HTTP_CACHE_IN_SECONDS").unwrap_or("60".to_string())
             ),
         )
+        .body(body)
+        .map_err(|_| VercelError::new("Couldn't build response"))
+}
+
+pub fn build_error_response<S>(error_message: S) -> Result<Response<Body>, VercelError>
+where
+    S: Into<String>,
+{
+    let error = ErrorResponse {
+        message: error_message.into(),
+    };
+    let body = Body::Text(SerJson::serialize_json(&error));
+    Response::builder()
+        .status(StatusCode::INTERNAL_SERVER_ERROR)
+        .header(http::header::CONTENT_TYPE, "application/json")
         .body(body)
         .map_err(|_| VercelError::new("Couldn't build response"))
 }
