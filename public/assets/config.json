@@ -1,5 +1,5 @@
 {
-    "input_data_path": "http://rusty-mastodon.vercel.app/api/mastodon-instances",
+    "input_data_path": "https://rusty-mastodon.vercel.app/api/mastodon-instances",
     "display_time": 60,
     "backgrounds": [
         "background.png",
