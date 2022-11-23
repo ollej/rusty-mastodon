@@ -157,25 +157,14 @@ pub struct Pagination {
 }
 
 pub fn get_instances() -> Result<Vec<Instance>, RustyMastodonError> {
-    let token = format!("Bearer {}", env::var("INSTANCES_API_TOKEN")?);
-    let mut bearer = header::HeaderValue::from_str(&token)?;
-    bearer.set_sensitive(true);
-    let mut headers = header::HeaderMap::new();
-    headers.insert(header::AUTHORIZATION, bearer);
-    let client = reqwest::blocking::Client::builder()
-        .default_headers(headers)
+    let content = reqwest::blocking::Client::builder()
         .user_agent(env::var("INSTANCES_API_USER_AGENT")?)
-        .build()
-        .map_err(|_| RustyMastodonError::ExternalRequest)?;
-
-    let resp = client
+        .build()?
         .get(env::var("INSTANCES_API_URL")?)
-        .send()
-        .map_err(|_| RustyMastodonError::ExternalRequest)?
-        .text()
-        .map_err(|_| RustyMastodonError::ExternalRequest)?;
-    println!("Response data: {}", resp);
-    let json: Root = DeJson::deserialize_json(&resp)?;
+        .bearer_auth(env::var("INSTANCES_API_TOKEN")?)
+        .send()?
+        .text()?;
+    let json: Root = DeJson::deserialize_json(&content)?;
     Ok(json.instances)
 }
 
